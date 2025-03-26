@@ -18,4 +18,9 @@ class MainActivity : AppCompatActivity() {
         // Передаем событие касания в GameView
         return gameView.onTouchEvent(event) || super.onTouchEvent(event)
     }
+
+    override fun onBackPressed() {
+        // Обработка кнопки назад - можно добавить подтверждение выхода
+        super.onBackPressed()
+    }
 }
