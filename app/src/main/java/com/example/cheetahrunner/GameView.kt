@@ -3,6 +3,9 @@ package com.example.cheetahrunner
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.*
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.media.MediaPlayer
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -282,18 +285,55 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun showGameOverDialog() {
-        (context as? MainActivity)?.runOnUiThread {
+        (context as MainActivity).runOnUiThread {
+            val layout = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(50, 50, 50, 50)
+                setBackgroundColor(Color.argb(220, 40, 40, 40))
+
+                val title = TextView(context).apply {
+                    text = "ИГРА ОКОНЧЕНА"
+                    setTextColor(Color.RED)
+                    textSize = 28f
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, 0, 0, 30)
+                }
+                addView(title)
+
+                val scoreText = TextView(context).apply {
+                    text = "Счёт: $score"
+                    setTextColor(Color.WHITE)
+                    textSize = 24f
+                    gravity = android.view.Gravity.CENTER
+                }
+                addView(scoreText)
+            }
+
             AlertDialog.Builder(context)
-                .setTitle("Конец игры")
-                .setMessage("Ваш результат: $score очков")
+                .setView(layout)
                 .setPositiveButton("Заново") { _, _ ->
                     resetGame()
+                    backgroundPlayer.start()
                 }
-                .setNegativeButton("Выход") { _, _ ->
-                    (context as? MainActivity)?.finish()
+                .setNegativeButton("В меню") { _, _ ->
+                    (context as MainActivity).finish()
                 }
                 .setCancelable(false)
-                .show()
+                .create()
+                .also { dialog ->
+                    dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+                    dialog.show()
+
+                    // Стилизация кнопок
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(Color.argb(100, 0, 150, 0))
+                    }
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(Color.argb(100, 150, 0, 0))
+                    }
+                }
         }
     }
 }
