@@ -13,6 +13,11 @@ class Obstacle(
     private val context: Context,
     val groupId: Int
 ) {
+    // Увеличиваем размеры препятствий
+    companion object {
+        val DEFAULT_WIDTH = 150f  // Было 90f
+        val DEFAULT_HEIGHT = 220f // Было 140f
+    }
     var isScored = false
     private val paint = Paint().apply {
         color = Color.RED

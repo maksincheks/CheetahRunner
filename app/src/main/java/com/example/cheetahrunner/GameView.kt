@@ -57,24 +57,24 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var lastUpdateTime = System.currentTimeMillis()
     private var lastObstacleGroupPassed = -1
 
-    // Персонаж
+    // Персонаж (увеличенные размеры)
     private var cheetahY = 0f
     private var isJumping = false
     private var jumpVelocity = 0f
     private val gravity = 1.4f
-    private val initialJumpVelocity = -45f
-    private val cheetahWidth = 150f
-    private val cheetahHeight = 150f
+    private val initialJumpVelocity = -55f
+    private val cheetahWidth = 250f  // Увеличено с 150f
+    private val cheetahHeight = 250f // Увеличено с 150f
     private val cheetahX = 200f
     private val groundLevel: Float get() = height.toFloat() - 100f
 
-    // Препятствия
+    // Препятствия (увеличенные размеры)
     private val obstacles = mutableListOf<Obstacle>()
     private var obstacleSpawnTimer = 0L
     private val obstacleSpawnDelay = 1800L
     private var obstacleCount = 1
-    private val obstacleWidth = 90f
-    private val obstacleHeight = 140f
+    private val obstacleWidth = 150f  // Увеличено с 90f
+    private val obstacleHeight = 220f // Увеличено с 140f
     private val minDistanceInGroup = width.toFloat() * 0.25f
     private var nextObstacleIncreaseScore = 50
     private var currentObstacleGroup = 0
@@ -87,6 +87,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
     private var movieStartTime = 0L
     private val tempRect = RectF()
+
+    // Пауза
+    private var isPaused = false
+    private var pausedBackground: Bitmap? = null
+    private val pauseButtonRect = RectF()
 
     init {
         holder.addCallback(this)
@@ -116,11 +121,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private fun stopGame() {
         gameThread?.setRunning(false)
         gameThread = null
-        backgroundPlayer.pause()
+        backgroundPlayer.release()
+        jumpPlayer.release()
+        losePlayer.release()
     }
 
     fun update() {
-        if (isGameOver) return
+        if (isGameOver || isPaused) return
 
         val currentTime = System.currentTimeMillis()
         val deltaTime = (currentTime - lastUpdateTime).coerceAtMost(50)
@@ -212,17 +219,58 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        backgroundBitmap?.let {
-            canvas.drawBitmap(it, null, backgroundRect, null)
-        } ?: run {
-            canvas.drawColor(Color.rgb(144, 238, 144))
+        if (isPaused && pausedBackground != null) {
+            canvas.drawBitmap(pausedBackground!!, null, backgroundRect, null)
+        } else {
+            backgroundBitmap?.let {
+                canvas.drawBitmap(it, null, backgroundRect, null)
+            } ?: run {
+                canvas.drawColor(Color.rgb(144, 238, 144))
+            }
+
+            if (isPaused && pausedBackground == null) {
+                pausedBackground = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val tempCanvas = Canvas(pausedBackground!!)
+                backgroundBitmap?.let {
+                    tempCanvas.drawBitmap(it, null, backgroundRect, null)
+                } ?: run {
+                    tempCanvas.drawColor(Color.rgb(144, 238, 144))
+                }
+                obstacles.forEach { it.draw(tempCanvas) }
+                drawCheetah(tempCanvas)
+            }
         }
 
+        if (!isPaused) {
+            obstacles.forEach { it.draw(canvas) }
+            drawCheetah(canvas)
+        }
+
+        // Кнопка паузы (левый верхний угол)
+        pauseButtonRect.set(30f, 30f, 130f, 130f)
+        paint.color = Color.argb(150, 100, 100, 100)
+        canvas.drawRoundRect(pauseButtonRect, 20f, 20f, paint)
+        paint.color = Color.WHITE
+        paint.textSize = 60f
+        canvas.drawText("II", pauseButtonRect.left + 35f, pauseButtonRect.top + 80f, paint)
+
+        // Счет (правый верхний угол)
         paint.color = Color.WHITE
         paint.style = Paint.Style.FILL_AND_STROKE
         paint.strokeWidth = 2f
-        canvas.drawText("Очки: $score", 50f, 80f, paint)
+        paint.textSize = 50f
+        val scoreText = "Очки: $score"
+        val textWidth = paint.measureText(scoreText)
+        canvas.drawText(scoreText, width - textWidth - 50f, 80f, paint) // Правая сторона с отступом 50px
 
+        if (isGameOver) {
+            paint.color = Color.RED
+            paint.textSize = 100f
+            canvas.drawText("ИГРА ОКОНЧЕНА", width / 2f - 250f, height / 2f, paint)
+        }
+    }
+
+    private fun drawCheetah(canvas: Canvas) {
         cheetahMovie?.let { movie ->
             val now = System.currentTimeMillis()
             if (movieStartTime == 0L) movieStartTime = now
@@ -238,20 +286,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             paint.color = Color.BLACK
             canvas.drawRect(cheetahX, cheetahY, cheetahX + cheetahWidth, cheetahY + cheetahHeight, paint)
         }
-
-        obstacles.forEach { it.draw(canvas) }
-
-        if (isGameOver) {
-            paint.color = Color.RED
-            paint.textSize = 100f
-            canvas.drawText("ИГРА ОКОНЧЕНА", width / 2f - 250f, height / 2f, paint)
-        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                if (!isGameOver) {
+                if (isGameOver) return false
+
+                if (pauseButtonRect.contains(event.x, event.y)) {
+                    if (!isPaused) {
+                        isPaused = true
+                        backgroundPlayer.pause()
+                        showPauseMenu()
+                    }
+                    return true
+                } else if (!isPaused) {
                     jump()
                     return true
                 }
@@ -271,6 +320,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun resetGame() {
         isGameOver = false
+        isPaused = false
+        pausedBackground = null
         score = 0
         obstacleCount = 1
         nextObstacleIncreaseScore = 50
@@ -282,6 +333,61 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         currentObstacleGroup = 0
         backgroundPlayer.seekTo(0)
         backgroundPlayer.start()
+    }
+
+    private fun showPauseMenu() {
+        (context as MainActivity).runOnUiThread {
+            val layout = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(50, 50, 50, 50)
+                setBackgroundColor(Color.argb(220, 40, 40, 40))
+
+                val title = TextView(context).apply {
+                    text = "ПАУЗА"
+                    setTextColor(Color.YELLOW)
+                    textSize = 28f
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, 0, 0, 30)
+                }
+                addView(title)
+
+                val scoreText = TextView(context).apply {
+                    text = "Ваш счет: $score"
+                    setTextColor(Color.WHITE)
+                    textSize = 24f
+                    gravity = android.view.Gravity.CENTER
+                }
+                addView(scoreText)
+            }
+
+            AlertDialog.Builder(context)
+                .setView(layout)
+                .setPositiveButton("Вернуться") { _, _ ->
+                    postDelayed({
+                        isPaused = false
+                        pausedBackground = null
+                        backgroundPlayer.start()
+                    }, 2000)
+                }
+                .setNegativeButton("В меню") { _, _ ->
+                    (context as MainActivity).finish()
+                }
+                .setCancelable(false)
+                .create()
+                .also { dialog ->
+                    dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+                    dialog.show()
+
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(Color.argb(100, 0, 150, 0))
+                    }
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(Color.argb(100, 150, 0, 0))
+                    }
+                }
+        }
     }
 
     private fun showGameOverDialog() {
@@ -324,7 +430,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                     dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
                     dialog.show()
 
-                    // Стилизация кнопок
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
                         setTextColor(Color.WHITE)
                         setBackgroundColor(Color.argb(100, 0, 150, 0))
